@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>🔥 Visit Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body {
+  font-family: 'Poppins', sans-serif;
+  background: radial-gradient(circle at center, #0f0c29, #302b63, #24243e);
+  height: 100vh; margin:0;
+  display:flex; justify-content:center; align-items:center;
+  color:white;
+}
+.card {
+  width:400px; padding:25px; border-radius:15px;
+  background:rgba(0,0,0,0.7);
+  box-shadow:0 0 25px #00f0ff;
+  text-align:center;
+}
+h2 {
+  color:#00faff; text-shadow:0 0 15px #00faff;
+}
+input,button {
+  width:100%; padding:10px; margin:8px 0;
+  border:none; border-radius:8px; font-size:15px;
+}
+input {
+  background:#111; color:#0ff; text-align:center;
+}
+button {
+  background:linear-gradient(90deg,#00c6ff,#0072ff);
+  color:white; cursor:pointer; font-weight:bold;
+  transition:0.3s; box-shadow:0 0 10px #00c6ff;
+}
+button:hover { transform:scale(1.05); }
+
+.progress-box {
+  margin-top:20px; background:#222; border-radius:10px;
+  overflow:hidden; height:20px; position:relative;
+}
+.progress-bar {
+  background:linear-gradient(90deg,#00f260,#0575e6);
+  width:0%; height:100%; border-radius:10px;
+  transition:width 0.3s ease; box-shadow:0 0 15px #00f260;
+}
+.stats {
+  margin-top:10px; font-size:14px; color:#0ff;
+  text-shadow:0 0 8px #0ff;
+}
+.hidden { display:none; }
+#chartBox {
+  width:100%; height:200px; margin-top:15px;
+}
+</style>
+</head>
+<body>
+
+<div class="card" id="loginCard">
+  <h2>Admin Login</h2>
+  <input id="user" placeholder="Username">
+  <input id="pass" placeholder="Password" type="password">
+  <button onclick="login()">Login</button>
+  <p id="msg"></p>
+</div>
+
+<div class="card hidden" id="panelCard">
+  <h2>Visit Panel</h2>
+  <input id="uid" placeholder="Enter UID">
+  <input id="needed" type="number" placeholder="Visits Needed">
+  <button onclick="startVisit()">🚀 Start Visit</button>
+
+  <div class="progress-box"><div class="progress-bar" id="bar"></div></div>
+  <div class="stats" id="progressText">Progress: 0%</div>
+  <div class="stats" id="finalStats"></div>
+  <canvas id="chartBox"></canvas>
+</div>
+
+<script>
+if(localStorage.getItem("auth") === "true"){
+  document.getElementById("loginCard").classList.add("hidden");
+  document.getElementById("panelCard").classList.remove("hidden");
+  loadChart();
+}
+
+function login(){
+  fetch("/api/login",{method:"POST",body:new URLSearchParams({
+    user:document.getElementById("user").value,
+    pass:document.getElementById("pass").value
+  })})
+  .then(r=>r.json()).then(d=>{
+    if(d.success){
+      localStorage.setItem("auth","true");
+      document.getElementById("loginCard").classList.add("hidden");
+      document.getElementById("panelCard").classList.remove("hidden");
+      loadChart();
+    } else {
+      document.getElementById("msg").innerText = d.error;
+    }
+  });
+}
+
+async function startVisit(){
+  const uid=document.getElementById("uid").value;
+  const needed=parseInt(document.getElementById("needed").value);
+  document.getElementById("finalStats").innerText="";
+  document.getElementById("bar").style.width="0%";
+  document.getElementById("progressText").innerText="Starting...";
+
+  let res = await fetch("/api/visit",{method:"POST",body:new URLSearchParams({uid,needed})});
+  let d = await res.json();
+  let bar = document.getElementById("bar");
+  let text = document.getElementById("progressText");
+  let log = d.log;
+
+  for(let i=0;i<log.length;i++){
+    setTimeout(()=>{
+      bar.style.width = log[i].progress+"%";
+      text.innerText = `Progress: ${log[i].progress}% (${log[i].success}/${needed})`;
+      if(log[i].progress === 100){
+        document.getElementById("finalStats").innerHTML = `
+          ✅ UID: ${d.uid}<br>
+          🎯 Success: ${d.success}/${d.needed}<br>
+          📊 Done: ${d.progress}%
+        `;
+        loadChart();
+      }
+    },i*30);
+  }
+}
+
+let chart;
+async function loadChart(){
+  const res = await fetch("/api/stats");
+  const data = await res.json();
+  const ctx = document.getElementById("chartBox").getContext("2d");
+  const labels = data.chart.map(x => new Date(x.timestamp*1000).toLocaleTimeString());
+  const values = data.chart.map(x => x.success);
+
+  if(chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Success per Session",
+        data: values,
+        borderColor: "#00faff",
+        backgroundColor: "rgba(0,255,255,0.3)",
+        tension: 0.3,
+        fill: true
+      }]
+    },
+    options: {
+      scales: {
+        y: { beginAtZero: true, ticks:{color:'#0ff'} },
+        x: { ticks:{color:'#0ff'} }
+      },
+      plugins: {
+        legend: { labels:{color:'#0ff'} }
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>
