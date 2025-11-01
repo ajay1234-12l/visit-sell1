@@ -1,167 +1,170 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
-<meta charset="UTF-8">
-<title>🔥 Visit Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Real Visit Panel — Live</title>
 <style>
-body {
-  font-family: 'Poppins', sans-serif;
-  background: radial-gradient(circle at center, #0f0c29, #302b63, #24243e);
-  height: 100vh; margin:0;
-  display:flex; justify-content:center; align-items:center;
-  color:white;
-}
-.card {
-  width:400px; padding:25px; border-radius:15px;
-  background:rgba(0,0,0,0.7);
-  box-shadow:0 0 25px #00f0ff;
-  text-align:center;
-}
-h2 {
-  color:#00faff; text-shadow:0 0 15px #00faff;
-}
-input,button {
-  width:100%; padding:10px; margin:8px 0;
-  border:none; border-radius:8px; font-size:15px;
-}
-input {
-  background:#111; color:#0ff; text-align:center;
-}
-button {
-  background:linear-gradient(90deg,#00c6ff,#0072ff);
-  color:white; cursor:pointer; font-weight:bold;
-  transition:0.3s; box-shadow:0 0 10px #00c6ff;
-}
-button:hover { transform:scale(1.05); }
-
-.progress-box {
-  margin-top:20px; background:#222; border-radius:10px;
-  overflow:hidden; height:20px; position:relative;
-}
-.progress-bar {
-  background:linear-gradient(90deg,#00f260,#0575e6);
-  width:0%; height:100%; border-radius:10px;
-  transition:width 0.3s ease; box-shadow:0 0 15px #00f260;
-}
-.stats {
-  margin-top:10px; font-size:14px; color:#0ff;
-  text-shadow:0 0 8px #0ff;
-}
-.hidden { display:none; }
-#chartBox {
-  width:100%; height:200px; margin-top:15px;
-}
+  body{font-family:Inter,Arial;background:#041226;color:#e6f6ff;margin:0;padding:18px;display:flex;justify-content:center}
+  .card{width:380px;background:linear-gradient(180deg,#061226,#0a2740);padding:18px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.6)}
+  h2{margin:0 0 12px 0;color:#8ee7ff}
+  input,button{width:100%;padding:10px;margin:8px 0;border-radius:8px;border:0;font-size:15px}
+  input{background:#082033;color:#cfefff}
+  button{background:#0ea5ff;color:#022;cursor:pointer;font-weight:700}
+  .progress{height:18px;background:#08324a;border-radius:8px;overflow:hidden;margin-top:10px}
+  .bar{height:100%;width:0;background:linear-gradient(90deg,#00ff9e,#00a6ff);transition:width .3s}
+  .meta{margin-top:8px;color:#bfefff;font-size:14px}
+  .small{font-size:13px;color:#9fd8ff;margin-top:6px}
+  .log{background:#021726;padding:8px;border-radius:8px;margin-top:10px;color:#bfefff;font-size:12px;height:110px;overflow:auto}
 </style>
 </head>
 <body>
+  <div class="card">
+    <h2>Real Visit Panel</h2>
 
-<div class="card" id="loginCard">
-  <h2>Admin Login</h2>
-  <input id="user" placeholder="Username">
-  <input id="pass" placeholder="Password" type="password">
-  <button onclick="login()">Login</button>
-  <p id="msg"></p>
-</div>
+    <div id="loginArea">
+      <input id="user" placeholder="Username (admin)" />
+      <input id="pass" placeholder="Password (1234)" type="password" />
+      <button id="loginBtn">Login</button>
+      <div id="loginMsg" class="small"></div>
+    </div>
 
-<div class="card hidden" id="panelCard">
-  <h2>Visit Panel</h2>
-  <input id="uid" placeholder="Enter UID">
-  <input id="needed" type="number" placeholder="Visits Needed">
-  <button onclick="startVisit()">🚀 Start Visit</button>
+    <div id="panel" style="display:none">
+      <input id="uid" placeholder="UID (e.g. 1593717951)" />
+      <input id="target" placeholder="Visits needed (e.g. 100)" type="number" />
+      <div style="display:flex;gap:8px">
+        <button id="start">Start</button>
+        <button id="stop" style="background:#ff6b6b">Stop</button>
+      </div>
 
-  <div class="progress-box"><div class="progress-bar" id="bar"></div></div>
-  <div class="stats" id="progressText">Progress: 0%</div>
-  <div class="stats" id="finalStats"></div>
-  <canvas id="chartBox"></canvas>
-</div>
+      <div class="progress"><div id="bar" class="bar"></div></div>
+      <div id="meta" class="meta">Progress: 0% — Successful: 0 — Requested: 0</div>
+      <div id="extra" class="small"></div>
+      <div class="log" id="log"></div>
+      <div class="small" style="margin-top:8px">Auto-stop rules: (1) when Gained ≥ Target OR (2) when SuccessfulVisits doesn't increase for 5 polls</div>
+    </div>
+  </div>
 
 <script>
-if(localStorage.getItem("auth") === "true"){
-  document.getElementById("loginCard").classList.add("hidden");
-  document.getElementById("panelCard").classList.remove("hidden");
-  loadChart();
-}
+const API_HIT = "/api/hit";
+const API_LOGIN = "/api/login";
 
-function login(){
-  fetch("/api/login",{method:"POST",body:new URLSearchParams({
-    user:document.getElementById("user").value,
-    pass:document.getElementById("pass").value
-  })})
-  .then(r=>r.json()).then(d=>{
-    if(d.success){
-      localStorage.setItem("auth","true");
-      document.getElementById("loginCard").classList.add("hidden");
-      document.getElementById("panelCard").classList.remove("hidden");
-      loadChart();
-    } else {
-      document.getElementById("msg").innerText = d.error;
-    }
-  });
-}
+let running = false;
+let baseline = null;
+let uidGlobal = "";
+let targetNeeded = 0;
+let stalemateCount = 0;
+const STALE_LIMIT = 5;      // stop if SuccessfulVisits doesn't increase for 5 polls
+const POLL_INTERVAL = 1200; // ms between polls (adjust if upstream limits)
 
-async function startVisit(){
-  const uid=document.getElementById("uid").value;
-  const needed=parseInt(document.getElementById("needed").value);
-  document.getElementById("finalStats").innerText="";
-  document.getElementById("bar").style.width="0%";
-  document.getElementById("progressText").innerText="Starting...";
+function log(msg){ const el = document.getElementById('log'); el.innerText = new Date().toLocaleTimeString() + " — " + msg + "\n" + el.innerText; }
 
-  let res = await fetch("/api/visit",{method:"POST",body:new URLSearchParams({uid,needed})});
-  let d = await res.json();
-  let bar = document.getElementById("bar");
-  let text = document.getElementById("progressText");
-  let log = d.log;
-
-  for(let i=0;i<log.length;i++){
-    setTimeout(()=>{
-      bar.style.width = log[i].progress+"%";
-      text.innerText = `Progress: ${log[i].progress}% (${log[i].success}/${needed})`;
-      if(log[i].progress === 100){
-        document.getElementById("finalStats").innerHTML = `
-          ✅ UID: ${d.uid}<br>
-          🎯 Success: ${d.success}/${d.needed}<br>
-          📊 Done: ${d.progress}%
-        `;
-        loadChart();
-      }
-    },i*30);
+document.getElementById('loginBtn').onclick = async () => {
+  const user = document.getElementById('user').value;
+  const pass = document.getElementById('pass').value;
+  const fd = new URLSearchParams(); fd.append('user', user); fd.append('pass', pass);
+  const r = await fetch(API_LOGIN, {method:'POST', body: fd});
+  const j = await r.json().catch(()=>({ok:false}));
+  if (r.ok && j.ok) {
+    document.getElementById('loginArea').style.display = 'none';
+    document.getElementById('panel').style.display = '';
+    log("Login success");
+  } else {
+    document.getElementById('loginMsg').innerText = j.error || "Login failed";
+    log("Login failed");
   }
-}
+};
 
-let chart;
-async function loadChart(){
-  const res = await fetch("/api/stats");
-  const data = await res.json();
-  const ctx = document.getElementById("chartBox").getContext("2d");
-  const labels = data.chart.map(x => new Date(x.timestamp*1000).toLocaleTimeString());
-  const values = data.chart.map(x => x.success);
+document.getElementById('start').onclick = async () => {
+  if (running) { alert("Already running"); return; }
+  const uid = (document.getElementById('uid').value || "").trim();
+  const needed = parseInt(document.getElementById('target').value || "0");
+  if (!uid || !needed || needed <= 0) { alert("Enter UID and target visits"); return; }
 
-  if(chart) chart.destroy();
-  chart = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels,
-      datasets: [{
-        label: "Success per Session",
-        data: values,
-        borderColor: "#00faff",
-        backgroundColor: "rgba(0,255,255,0.3)",
-        tension: 0.3,
-        fill: true
-      }]
-    },
-    options: {
-      scales: {
-        y: { beginAtZero: true, ticks:{color:'#0ff'} },
-        x: { ticks:{color:'#0ff'} }
-      },
-      plugins: {
-        legend: { labels:{color:'#0ff'} }
+  uidGlobal = uid;
+  targetNeeded = needed;
+  baseline = null;
+  stalemateCount = 0;
+  running = true;
+  document.getElementById('bar').style.width = '0%';
+  document.getElementById('meta').innerText = `Progress: 0% — Successful: 0 — Requested: ${targetNeeded}`;
+  document.getElementById('extra').innerText = '';
+
+  // init snapshot
+  const initFd = new URLSearchParams(); initFd.append('uid', uidGlobal); initFd.append('action','init');
+  try {
+    const rInit = await fetch(API_HIT, {method:'POST', body: initFd});
+    const jInit = await rInit.json();
+    baseline = (typeof jInit.SuccessfulVisits === 'number') ? jInit.SuccessfulVisits : parseInt(jInit.SuccessfulVisits||0) || 0;
+    log("Init snapshot SuccessfulVisits=" + baseline + " | Player:" + (jInit.api && jInit.api.PlayerNickname ? jInit.api.PlayerNickname : "N/A"));
+    pollLoop(); // start polling loop
+  } catch(e){
+    log("Init error: " + e.toString());
+    running = false;
+  }
+};
+
+document.getElementById('stop').onclick = () => {
+  if (!running) return;
+  running = false;
+  log("Stopped by user");
+  alert("Stopped.");
+};
+
+async function pollLoop(){
+  let lastSuccess = baseline;
+  while(running){
+    try {
+      const fd = new URLSearchParams(); fd.append('uid', uidGlobal); fd.append('action','poll');
+      const res = await fetch(API_HIT, {method:'POST', body: fd});
+      if (!res.ok) {
+        const err = await res.json().catch(()=>({error:'unknown'}));
+        log("Upstream error: " + JSON.stringify(err));
+        await sleep(POLL_INTERVAL); continue;
       }
+      const j = await res.json();
+      const cur = (typeof j.SuccessfulVisits === 'number') ? j.SuccessfulVisits : parseInt(j.SuccessfulVisits||0) || 0;
+      const gained = cur - baseline;
+      const percent = Math.max(0, Math.min(100, Math.round((gained / targetNeeded) * 10000) / 100));
+      document.getElementById('bar').style.width = percent + '%';
+      document.getElementById('meta').innerText = `Progress: ${percent}% — Successful: ${gained} — Requested: ${targetNeeded}`;
+      // show some extras
+      const nick = j.api && j.api.PlayerNickname ? j.api.PlayerNickname : "";
+      const totalVisits = j.api && (j.api.TotalVisits || j.api.TotalVisits === 0) ? j.api.TotalVisits : "";
+      const failed = j.api && (j.api.FailedVisits || j.api.FailedVisits === 0) ? j.api.FailedVisits : "";
+      document.getElementById('extra').innerText = `UID: ${uidGlobal} ${nick ? "| Player: " + nick : ""} ${totalVisits ? "| TotalVisits: "+totalVisits : ""} ${failed ? "| Failed: "+failed : ""}`;
+      log("Poll: SuccessfulVisits=" + cur + " | gained=" + gained);
+
+      // stall detection
+      if (cur <= lastSuccess) {
+        stalemateCount += 1;
+        log("No increase detected (" + stalemateCount + "/" + STALE_LIMIT + ")");
+      } else {
+        stalemateCount = 0;
+      }
+      lastSuccess = cur;
+
+      // completion checks
+      if (gained >= targetNeeded) {
+        running = false;
+        log("Target reached! gained=" + gained);
+        alert("✅ Completed! Gained: " + gained);
+        break;
+      }
+      if (stalemateCount >= STALE_LIMIT) {
+        running = false;
+        log("Stopped due to no progress for " + STALE_LIMIT + " polls. Last gained=" + gained);
+        alert("Stopped — no further progress detected. Gained: " + gained);
+        break;
+      }
+    } catch (e) {
+      log("Exception poll: " + e.toString());
     }
-  });
+    await sleep(POLL_INTERVAL);
+  } // loop
 }
+
+function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 </script>
 </body>
 </html>
