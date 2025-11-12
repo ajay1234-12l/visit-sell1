@@ -10,7 +10,7 @@ from urllib.error import URLError, HTTPError
 # Configure real API template (you gave)
 VISIT_API_TEMPLATE = os.environ.get(
     "VISIT_API_TEMPLATE",
-    "http://visits-api-yash-ff.vercel.app/visit?uid={uid}&region=IND"
+    "https://visit-api-by-digi.vercel.app/visit?uid={uid}&server_name=ind"
 )
 
 # Allow insecure for some hosts if necessary
